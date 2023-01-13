@@ -1,0 +1,91 @@
+#! /bin/sh
+
+usage() {
+cat << EOF
+usage: $0 [mode] [ARGS]
+
+This script does foo.
+
+OPTIONS:
+   -r, --randomize  Randomize output
+   -h, --help       Show this message and exit
+EOF
+}
+
+INDEX=1
+DIR="$HOME/Wallpaper"
+DWM_CONFIG="$HOME/.config/dwm/colors"
+
+while [ ! $# -eq 0 ]; do
+    case "$1" in
+        -e | --exclude)
+            if [ "$2" ]; then
+                EXCLUDE=$2
+            else
+                echo "--exclude requires an argument"
+            fi
+            ;;
+        -i | --include)
+            if [ "$2" ]; then
+                INCLUDE=$2
+            else
+                echo "--include requires an argument"
+            fi
+            ;;
+        -r | --randomize)
+            RANDOMIZE=1
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        --index)
+            if [ "$2" ]; then
+                INDEX=$2
+                INDEX=$((INDEX + 1))
+                shift
+            else
+                echo 'set requires an index'
+                exit 1
+            fi
+            ;;
+        *)
+            ;;
+    esac
+    shift
+done
+
+cd "$DIR"
+
+CMD="ficor --info"
+
+if [ "$EXCLUDE" ]; then
+    CMD="$CMD --exclude $EXCLUDE"
+fi
+
+if [ "$INCLUDE" ]; then
+    CMD="$CMD --include $INCLUDE"
+fi
+
+if [ "$RANDOMIZE" ]; then
+    CMD="$CMD | sort -R"
+fi
+
+CMD="$CMD | head -n $INDEX | tail -n 1"
+
+
+OUTPUT=$(eval $CMD)
+read -ra DATA <<< "$OUTPUT"
+echo "filename: ${DATA[0]}"
+echo "color:    ${DATA[1]}"
+
+feh --bg-fill "${DATA[0]}"
+
+echo "${DATA[1]}" >  "$DWM_CONFIG"
+echo "#1b1b1b"    >> "$DWM_CONFIG"
+echo "#1b1b1b"    >> "$DWM_CONFIG"
+echo "#1b1b1b"    >> "$DWM_CONFIG"
+echo "${DATA[1]}" >> "$DWM_CONFIG"
+echo "${DATA[1]}" >> "$DWM_CONFIG"
+
+dwm-refresh
