@@ -1,91 +1,206 @@
-#! /bin/sh
+#! /usr/bin/env bash
 
-usage() {
-cat << EOF
-usage: $0 [mode] [ARGS]
-
-This script does foo.
-
-OPTIONS:
-   -r, --randomize  Randomize output
-   -h, --help       Show this message and exit
-EOF
+usage () {
+    echo "Usage:"
 }
 
-INDEX=1
 DIR="$HOME/Wallpaper"
-DWM_CONFIG="$HOME/.config/dwm/colors"
+DWM_COLORS="$HOME/.config/dwm/colors"
 
-while [ ! $# -eq 0 ]; do
-    case "$1" in
-        -e | --exclude)
-            if [ "$2" ]; then
-                EXCLUDE=$2
-            else
-                echo "--exclude requires an argument"
-            fi
+dwm-color() {
+    echo "$1"      >  "$DWM_COLORS"
+    echo "#1b1b1b" >> "$DWM_COLORS"
+    echo "#1b1b1b" >> "$DWM_COLORS"
+    echo "#1b1b1b" >> "$DWM_COLORS"
+    echo "$1"      >> "$DWM_COLORS"
+    echo "$1"      >> "$DWM_COLORS"
+    dwm-refresh
+}
+
+check_argument() {
+    if ! [ "$2" ]; then
+        echo "$1 requires argument"
+        exit 1
+    fi
+}
+
+ARGV=()
+
+# MAIN:
+
+while [ "$1" ]; do
+    case $1 in
+        -r | --random)
+            RANDOMIZE=1
+            ;;
+        --get)
+            check_argument "$1" "$2"
+            GET="$2"
+            shift
+            ;;
+        --index)
+            check_argument "$1" "$2"
+            INDEX="$2"
+            shift
+            ;;
+        -t | --set-tag)
+            check_argument "$1" "$2"
+            SET_TAG="$2"
+            shift
             ;;
         -i | --include)
-            if [ "$2" ]; then
-                INCLUDE=$2
-            else
-                echo "--include requires an argument"
-            fi
+            check_argument "$1" "$2"
+            INCLUDE="$2"
+            shift
             ;;
-        -r | --randomize)
-            RANDOMIZE=1
+        -e | --exclude)
+            check_argument "$1" "$2"
+            EXCLUDE="$2"
+            shift
             ;;
         -h | --help)
             usage
             exit 0
             ;;
-        --index)
-            if [ "$2" ]; then
-                INDEX=$2
-                INDEX=$((INDEX + 1))
-                shift
-            else
-                echo 'set requires an index'
-                exit 1
-            fi
-            ;;
         *)
+            ARGV+=("$1")
             ;;
     esac
     shift
 done
 
-cd "$DIR"
-
-CMD="ficor --info"
-
-if [ "$EXCLUDE" ]; then
-    CMD="$CMD --exclude $EXCLUDE"
+if [[ ${#ARGV[@]} != 0 ]]; then
+    echo "Error: additional arguments found"
+    exit 1
 fi
 
-if [ "$INCLUDE" ]; then
-    CMD="$CMD --include $INCLUDE"
+get-wp () {
+    cd "$HOME/Downloads"
+    FILE="$(date +"%s").${GET##*.}"
+    echo "$FILE"
+    wget "$GET" -O "$FILE"
+    if ! [ "$?" ]; then
+        echo "Error: could not download image"
+        exit 1
+    fi
+    feh --bg-fill "$FILE"
+
+    if ! [ "$SET_TAG" ]; then
+        echo "Select the tags for the picture"
+        while true; do
+            read -p "> " INPUT
+            case $INPUT in
+                q)
+                    rm "$FILE"
+                    exit 0
+                    ;;
+                y | yes)
+                    if ! [ "$SET_TAG" ]; then
+                        echo "no tags selected"
+                    else
+                        break
+                    fi
+                    ;;
+                *)
+                    SET_TAG="$INPUT"
+                    echo "Use this?"
+                    ;;
+            esac
+        done
+    fi
+
+    echo "Tag: $SET_TAG"
+    echo "Select the color: "
+
+    while true; do
+        read -p "> " INPUT
+        case $INPUT in
+            q)
+                rm "$FILE"
+                exit 0
+                ;;
+            p | pick)
+                COLOR="$(xcolor)"
+                echo "Selected Color: $COLOR"
+                dwm-color "$COLOR"
+                ;;
+            yes)
+                if ! [ "$COLOR" ]; then
+                    echo "no color selected"
+                else
+                    break
+                fi
+                ;;
+            *)
+                if [[ $INPUT =~ ^#[0-9A-Fa-f]{6}$ ]] ; then
+                    COLOR="$INPUT"
+                    dwm-color "$COLOR"
+                else
+                    echo "not a hex color nor command"
+                fi
+                ;;
+        esac
+    done
+
+    echo "Config:"
+    echo "    File: $FILE"
+    echo "     TAG: $SET_TAG"
+    echo "   Color: $COLOR"
+    echo "Do yout want to add this to $DIR (yes/no)"
+    while true; do
+        read -p "> " INPUT
+        case $INPUT in
+            y | yes)
+                break
+                ;;
+            n | no)
+                rm "$FILE"
+                exit 0
+                ;;
+            *)
+                echo "Error: invalid response"
+                ;;
+        esac
+    done
+
+    mv "$FILE" "$DIR"
+    cd "$DIR"
+    ficor --add-file "$FILE" -t "$SET_TAG" --set-info "$COLOR"
+}
+
+set-wp () {
+    cd "$DIR"
+    CMD="ficor --info"
+    if [ "$INCLUDE" ]; then
+        CMD="$CMD --include $INCLUDE"
+    fi
+    if [ "$EXCLUDE" ]; then
+        CMD="$CMD --exclude $EXCLUDE"
+    fi
+    if [ "$RANDOMIZE" ]; then
+        CMD="$CMD | sort -R"
+    fi
+    if [ "$INDEX" ]; then
+        INDEX=$((INDEX + 1))
+        LINES=$(eval "$CMD" | wc -l)
+        if [[ "$LINES" < "$INDEX" ]]; then
+            echo "Error: index not available"
+            exit 1
+        fi
+        CMD="$CMD | head -n $INDEX | tail -n 1"
+    else
+        CMD="$CMD | head -n 1"
+    fi
+    set -- $(eval "$CMD")
+    FILE="$1"
+    COLOR="$2"
+
+    feh --bg-scale "$FILE"
+    dwm-color "$COLOR"
+}
+
+if [ "$GET" ]; then
+    get-wp
+else
+    set-wp
 fi
-
-if [ "$RANDOMIZE" ]; then
-    CMD="$CMD | sort -R"
-fi
-
-CMD="$CMD | head -n $INDEX | tail -n 1"
-
-
-OUTPUT=$(eval $CMD)
-read -ra DATA <<< "$OUTPUT"
-echo "filename: ${DATA[0]}"
-echo "color:    ${DATA[1]}"
-
-feh --bg-fill "${DATA[0]}"
-
-echo "${DATA[1]}" >  "$DWM_CONFIG"
-echo "#1b1b1b"    >> "$DWM_CONFIG"
-echo "#1b1b1b"    >> "$DWM_CONFIG"
-echo "#1b1b1b"    >> "$DWM_CONFIG"
-echo "${DATA[1]}" >> "$DWM_CONFIG"
-echo "${DATA[1]}" >> "$DWM_CONFIG"
-
-dwm-refresh
