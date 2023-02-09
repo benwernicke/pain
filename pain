@@ -15,6 +15,9 @@ dwm-color() {
     echo "$1"      >> "$DWM_COLORS"
     echo "$1"      >> "$DWM_COLORS"
     dwm-refresh
+
+    echo "$1" > "$HOME/.config/vis/colors/pain"
+    echo "#1b1b1b" >> "$HOME/.config/vis/colors/pain"
 }
 
 check_argument() {
@@ -30,6 +33,11 @@ ARGV=()
 
 while [ "$1" ]; do
     case $1 in
+        --add-from-file)
+            check_argument "$1" "$2"
+            FROM_FILE="$2"
+            shift
+            ;;
         -r | --random)
             RANDOMIZE=1
             ;;
@@ -75,13 +83,20 @@ if [[ ${#ARGV[@]} != 0 ]]; then
 fi
 
 get-wp () {
-    cd "$HOME/Downloads"
-    FILE="$(date +"%s").${GET##*.}"
-    echo "$FILE"
-    wget "$GET" -O "$FILE"
-    if ! [ "$?" ]; then
-        echo "Error: could not download image"
-        exit 1
+
+
+    if [ "$FROM_FILE" ]; then
+        FILE="$(date +"%s").${FROM_FILE##*.}"
+        mv "$FROM_FILE" "$FILE"
+    else
+        FILE="$(date +"%s").${GET##*.}"
+        cd "$HOME/Downloads"
+        echo "$FILE"
+        wget "$GET" -O "$FILE"
+        if ! [ "$?" ]; then
+            echo "Error: could not download image"
+            exit 1
+        fi
     fi
     feh --bg-fill "$FILE"
 
@@ -182,11 +197,6 @@ set-wp () {
     fi
     if [ "$INDEX" ]; then
         INDEX=$((INDEX + 1))
-        LINES=$(eval "$CMD" | wc -l)
-        if [[ "$LINES" < "$INDEX" ]]; then
-            echo "Error: index not available"
-            exit 1
-        fi
         CMD="$CMD | head -n $INDEX | tail -n 1"
     else
         CMD="$CMD | head -n 1"
@@ -199,7 +209,7 @@ set-wp () {
     dwm-color "$COLOR"
 }
 
-if [ "$GET" ]; then
+if [[ "$GET" || "$FROM_FILE" ]]; then
     get-wp
 else
     set-wp
